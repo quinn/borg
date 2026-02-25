@@ -1,0 +1,15 @@
+{
+  "name": "borg-codex",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "context": ".."
+  },
+  "remoteUser": "vscode",
+  "mounts": [
+    "source=${localEnv:HOME}/.codex,target=/home/vscode/.codex,type=bind"
+  ],
+  "containerEnv": {
+    "CODEX_HOME": "/home/vscode/.codex"
+  },
+  "postCreateCommand": "codex --version"
+}

@@ -1,0 +1,26 @@
+# Local runtime artifacts
+logs/
+.tmp/
+*.log
+
+# Python / uv
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Node/Bun
+node_modules/
+
+# Environment files
+.env
+.env.*
+
+# Editor / OS junk
+.DS_Store
+*.swp
+*.swo
+.idea/
+.vscode/

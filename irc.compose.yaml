@@ -1,0 +1,11 @@
+name: openclaw-irc
+
+services:
+  ngircd:
+    image: lscr.io/linuxserver/ngircd:latest
+    container_name: ngircd
+    restart: unless-stopped
+    ports:
+      - "6667:6667"
+    volumes:
+      - ./irc/ngircd.conf:/config/ngircd.conf:ro
