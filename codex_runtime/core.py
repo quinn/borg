@@ -1,48 +1,10 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-from datetime import datetime, timezone
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
-from sarge import Capture, run
-from codex_runtime.utils import (
-    now_utc_iso,
-    parse_json_lines,
-    resolve_path,
-    run_command_capture,
-    shell_join,
-    slugify,
-    write_jsonl,
-)
-
-
-@dataclass(frozen=True)
-class CodexExecRequest:
-    prompt: str = "ping"
-    workspace_folder: str = "."
-    devcontainer_config: str = ".devcontainer/devcontainer.json"
-    json_log_path: str = "logs/codex-run-events.jsonl"
-
-
-@dataclass(frozen=True)
-class CodexExecResult:
-    ok: bool
-    exit_code: int
-    turn_status: str
-    thread_id: str | None
-    json_log_path: str
-    summary_data: dict[str, Any]
-
-    def to_dict(self) -> dict[str, Any]:
-        return {
-            "ok": self.ok,
-            "exit_code": self.exit_code,
-            "turn_status": self.turn_status,
-            "thread_id": self.thread_id,
-            "json_log_path": self.json_log_path,
-            "summary_data": self.summary_data,
-        }
+from codex_runtime.utils import run_command_capture, shell_join, slugify
 
 
 @dataclass(frozen=True)
@@ -51,19 +13,18 @@ class CreateSessionRequest:
     task_description: str
     workspace_folder: str = "."
     base_ref: str = "HEAD"
-    sessions_root_path: str | None = None
 
 
 @dataclass(frozen=True)
 class CreateSessionResult:
-    ok: bool
-    session_id: str | None
-    branch_name: str | None
-    worktree_path: str | None
-    devcontainer_config_path: str | None
-    session_prompt: str
-    setup_steps: list[dict[str, Any]]
-    error: str | None
+    ok: bool = False
+    session_id: str | None = None
+    branch_name: str | None = None
+    worktree_path: str | None = None
+    devcontainer_config_path: str | None = None
+    session_prompt: str = ""
+    setup_steps: list[dict[str, Any]] = field(default_factory=list)
+    error: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -78,83 +39,81 @@ class CreateSessionResult:
         }
 
 
-def summarize_events(
-    command: str,
-    exit_code: int,
-    start_time: str,
-    end_time: str,
-    events: list[dict[str, Any]],
-    non_json_stdout: list[str],
-    stderr_lines: list[str],
-) -> dict[str, Any]:
-    summary_data: dict[str, Any] = {
-        "command": command,
-        "start_time": start_time,
-        "end_time": end_time,
-        "exit_code": exit_code,
-        "thread_id": None,
-        "turn_status": "unknown",
-        "turn_error": None,
-        "usage": None,
-        "event_count": len(events),
-        "agent_messages": [],
-        "error_messages": [],
-        "non_json_stdout_lines": non_json_stdout,
-        "stderr_lines": stderr_lines,
-    }
-
-    for event in events:
-        event_type = event.get("type")
-        match event_type:
-            case "thread.started":
-                if summary_data["thread_id"] is None:
-                    summary_data["thread_id"] = event.get("thread_id")
-            case "turn.completed":
-                summary_data["turn_status"] = "completed"
-                usage_obj = event.get("usage")
-                summary_data["usage"] = usage_obj if isinstance(usage_obj, dict) else None
-            case "turn.failed":
-                summary_data["turn_status"] = "failed"
-                error_obj = event.get("error")
-                if isinstance(error_obj, dict):
-                    summary_data["turn_error"] = error_obj.get("message")
-            case "error":
-                message = event.get("message")
-                if isinstance(message, str):
-                    summary_data["error_messages"].append(message)
-            case "item.completed":
-                item = event.get("item")
-                if isinstance(item, dict) and item.get("type") == "agent_message":
-                    text = item.get("text")
-                    if isinstance(text, str):
-                        summary_data["agent_messages"].append(text)
-            case _:
-                pass
-
-    return summary_data
+@dataclass(frozen=True)
+class EndSessionRequest:
+    session_name: str
+    workspace_folder: str = "."
 
 
-def build_codex_command(request: CodexExecRequest) -> list[str]:
-    workspace_path = str(Path(request.workspace_folder).resolve())
-    config_path = str(resolve_path(workspace_path, request.devcontainer_config))
-    codex_exec = [
-        "codex",
-        "exec",
-        "--skip-git-repo-check",
-        "--json",
-        "--dangerously-bypass-approvals-and-sandbox",
-        request.prompt,
-    ]
-    return [
-        "bunx",
-        "@devcontainers/cli@latest",
-        "exec",
-        "--workspace-folder",
-        workspace_path,
-        "--config",
-        config_path,
-        *codex_exec,
-    ]
+@dataclass(frozen=True)
+class EndSessionResult:
+    ok: bool = False
+    session_id: str | None = None
+    branch_name: str | None = None
+    worktree_path: str | None = None
+    teardown_steps: list[dict[str, Any]] = field(default_factory=list)
+    error: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "ok": self.ok,
+            "session_id": self.session_id,
+            "branch_name": self.branch_name,
+            "worktree_path": self.worktree_path,
+            "teardown_steps": self.teardown_steps,
+            "error": self.error,
+        }
+
+
+@dataclass(frozen=True)
+class ListSessionsRequest:
+    workspace_folder: str = "."
+
+
+@dataclass(frozen=True)
+class ListSessionsResult:
+    ok: bool = False
+    sessions_root_path: str | None = None
+    sessions: list[dict[str, Any]] = field(default_factory=list)
+    list_steps: list[dict[str, Any]] = field(default_factory=list)
+    error: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "ok": self.ok,
+            "sessions_root_path": self.sessions_root_path,
+            "sessions": self.sessions,
+            "list_steps": self.list_steps,
+            "error": self.error,
+        }
+
+
+@dataclass(frozen=True)
+class SessionContext:
+    git_root_path: Path
+    sessions_root_path: Path
+    session_id: str
+    branch_name: str
+    worktree_path: Path
+    devcontainer_config_path: Path
+
+
+class CommandStepRecorder:
+    def __init__(self) -> None:
+        self.steps: list[dict[str, Any]] = []
+
+    def run(self, name: str, command_parts: list[str]) -> tuple[int, str, str]:
+        exit_code, stdout_text, stderr_text = run_command_capture(command_parts)
+        self.steps.append(
+            {
+                "name": name,
+                "command": shell_join(command_parts),
+                "exit_code": exit_code,
+                "stdout_lines": stdout_text.splitlines(),
+                "stderr_lines": stderr_text.splitlines(),
+            }
+        )
+        return exit_code, stdout_text, stderr_text
 
 
 def resolve_git_root(workspace_folder: str) -> tuple[str | None, str | None]:
@@ -164,6 +123,111 @@ def resolve_git_root(workspace_folder: str) -> tuple[str | None, str | None]:
         return None, stderr_text.strip() or "Failed to resolve git root."
     git_root = stdout_text.strip()
     return git_root, None
+
+
+def resolve_session_roots(workspace_folder: str) -> tuple[tuple[Path, Path] | None, str | None]:
+    git_root, git_root_error = resolve_git_root(workspace_folder)
+    if not git_root:
+        return None, git_root_error
+
+    git_root_path = Path(git_root)
+    sessions_root_path = (git_root_path.parent / f"{git_root_path.name}-sessions").resolve()
+    return (git_root_path, sessions_root_path), None
+
+
+def parse_worktree_porcelain(stdout_text: str) -> list[tuple[Path, str | None]]:
+    entries: list[tuple[Path, str | None]] = []
+    current_path: Path | None = None
+    current_branch: str | None = None
+
+    for line in [*stdout_text.splitlines(), ""]:
+        if line.startswith("worktree "):
+            if current_path is not None:
+                entries.append((current_path, current_branch))
+            current_path = Path(line.removeprefix("worktree ").strip()).resolve()
+            current_branch = None
+            continue
+
+        if line.startswith("branch "):
+            branch_ref = line.removeprefix("branch ").strip()
+            current_branch = branch_ref.removeprefix("refs/heads/")
+            continue
+
+        if not line and current_path is not None:
+            entries.append((current_path, current_branch))
+            current_path = None
+            current_branch = None
+
+    return entries
+
+
+def resolve_session_context(session_name: str, workspace_folder: str) -> tuple[SessionContext | None, str | None]:
+    roots, roots_error = resolve_session_roots(workspace_folder)
+    if not roots:
+        return None, roots_error
+
+    git_root_path, sessions_root_path = roots
+    session_id = slugify(session_name)
+    branch_name = session_id
+    worktree_path = (sessions_root_path / session_id).resolve()
+    devcontainer_config_path = (worktree_path / ".devcontainer" / "devcontainer.json").resolve()
+    return (
+        SessionContext(
+            git_root_path=git_root_path,
+            sessions_root_path=sessions_root_path,
+            session_id=session_id,
+            branch_name=branch_name,
+            worktree_path=worktree_path,
+            devcontainer_config_path=devcontainer_config_path,
+        ),
+        None,
+    )
+
+
+def list_sessions(request: ListSessionsRequest) -> ListSessionsResult:
+    base_result = ListSessionsResult()
+
+    roots, roots_error = resolve_session_roots(request.workspace_folder)
+    if not roots:
+        return replace(base_result, error=roots_error)
+
+    git_root_path, sessions_root_path = roots
+    recorder = CommandStepRecorder()
+    base_result = replace(
+        base_result,
+        sessions_root_path=str(sessions_root_path),
+        list_steps=recorder.steps,
+    )
+    list_worktrees_cmd = ["git", "-C", str(git_root_path), "worktree", "list", "--porcelain"]
+    list_worktrees_exit, list_worktrees_stdout, _ = recorder.run("list_git_worktrees", list_worktrees_cmd)
+    if list_worktrees_exit != 0:
+        return replace(base_result, error="Failed to list git worktrees.")
+
+    sessions: list[dict[str, Any]] = []
+    for worktree_path, branch_name in parse_worktree_porcelain(list_worktrees_stdout):
+        try:
+            worktree_path.relative_to(sessions_root_path)
+        except ValueError:
+            continue
+
+        devcontainer_config_path = (worktree_path / ".devcontainer" / "devcontainer.json").resolve()
+        sessions.append(
+            {
+                "session_id": worktree_path.name,
+                "branch_name": branch_name,
+                "worktree_path": str(worktree_path),
+                "devcontainer_config_path": str(devcontainer_config_path),
+                "has_devcontainer_config": devcontainer_config_path.exists(),
+            }
+        )
+
+    sessions.sort(key=lambda session: str(session["session_id"]))
+    return replace(
+        base_result,
+        ok=True,
+        sessions=sessions,
+        error=None,
+    )
 
 
 def build_session_prompt(task_description: str, session_id: str, worktree_path: str) -> str:
@@ -188,153 +252,140 @@ def build_session_prompt(task_description: str, session_id: str, worktree_path: 
 
 
 def create_session(request: CreateSessionRequest) -> CreateSessionResult:
-    git_root, git_root_error = resolve_git_root(request.workspace_folder)
-    if not git_root:
-        return CreateSessionResult(
-            ok=False,
-            session_id=None,
-            branch_name=None,
-            worktree_path=None,
-            devcontainer_config_path=None,
-            session_prompt="",
-            setup_steps=[],
-            error=git_root_error,
-        )
+    base_result = CreateSessionResult()
 
-    git_root_path = Path(git_root)
-    if request.sessions_root_path:
-        sessions_root_path = resolve_path(str(git_root_path), request.sessions_root_path)
-    else:
-        sessions_root_path = (git_root_path.parent / f"{git_root_path.name}-sessions").resolve()
-    sessions_root_path.mkdir(parents=True, exist_ok=True)
+    context, context_error = resolve_session_context(request.session_name, request.workspace_folder)
+    if not context:
+        return replace(base_result, error=context_error)
 
-    session_stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
-    session_id = f"{slugify(request.session_name)}-{session_stamp}"
-    branch_name = f"session/{session_id}"
-    worktree_path = (sessions_root_path / session_id).resolve()
-    devcontainer_config_path = (worktree_path / ".devcontainer" / "devcontainer.json").resolve()
+    context.sessions_root_path.mkdir(parents=True, exist_ok=True)
+    recorder = CommandStepRecorder()
+    base_result = replace(
+        base_result,
+        session_id=context.session_id,
+        branch_name=context.branch_name,
+        worktree_path=str(context.worktree_path),
+        devcontainer_config_path=str(context.devcontainer_config_path),
+        setup_steps=recorder.steps,
+    )
 
-    setup_steps: list[dict[str, Any]] = []
+    def fail(error: str) -> CreateSessionResult:
+        return replace(base_result, error=error)
 
     worktree_cmd = [
         "git",
         "-C",
-        str(git_root_path),
+        str(context.git_root_path),
         "worktree",
         "add",
         "-b",
-        branch_name,
-        str(worktree_path),
+        context.branch_name,
+        str(context.worktree_path),
         request.base_ref,
     ]
-    worktree_exit, worktree_stdout, worktree_stderr = run_command_capture(worktree_cmd)
-    setup_steps.append(
-        {
-            "name": "create_worktree",
-            "command": shell_join(worktree_cmd),
-            "exit_code": worktree_exit,
-            "stdout_lines": worktree_stdout.splitlines(),
-            "stderr_lines": worktree_stderr.splitlines(),
-        }
-    )
+    worktree_exit, _, _ = recorder.run("create_worktree", worktree_cmd)
     if worktree_exit != 0:
-        return CreateSessionResult(
-            ok=False,
-            session_id=session_id,
-            branch_name=branch_name,
-            worktree_path=str(worktree_path),
-            devcontainer_config_path=str(devcontainer_config_path),
-            session_prompt="",
-            setup_steps=setup_steps,
-            error="Failed to create git worktree.",
-        )
+        return fail("Failed to create git worktree.")
 
-    if not devcontainer_config_path.exists():
-        return CreateSessionResult(
-            ok=False,
-            session_id=session_id,
-            branch_name=branch_name,
-            worktree_path=str(worktree_path),
-            devcontainer_config_path=str(devcontainer_config_path),
-            session_prompt="",
-            setup_steps=setup_steps,
-            error=f"Missing devcontainer config at {devcontainer_config_path}.",
-        )
+    if not context.devcontainer_config_path.exists():
+        return fail(f"Missing devcontainer config at {context.devcontainer_config_path}.")
 
     up_cmd = [
         "bunx",
         "@devcontainers/cli@latest",
         "up",
         "--workspace-folder",
-        str(worktree_path),
+        str(context.worktree_path),
         "--config",
-        str(devcontainer_config_path),
+        str(context.devcontainer_config_path),
     ]
-    up_exit, up_stdout, up_stderr = run_command_capture(up_cmd)
-    setup_steps.append(
-        {
-            "name": "devcontainer_up",
-            "command": shell_join(up_cmd),
-            "exit_code": up_exit,
-            "stdout_lines": up_stdout.splitlines(),
-            "stderr_lines": up_stderr.splitlines(),
-        }
-    )
+    up_exit, _, _ = recorder.run("devcontainer_up", up_cmd)
 
     session_prompt = build_session_prompt(
         task_description=request.task_description,
-        session_id=session_id,
-        worktree_path=str(worktree_path),
+        session_id=context.session_id,
+        worktree_path=str(context.worktree_path),
     )
-    return CreateSessionResult(
+    return replace(
+        base_result,
         ok=up_exit == 0,
-        session_id=session_id,
-        branch_name=branch_name,
-        worktree_path=str(worktree_path),
-        devcontainer_config_path=str(devcontainer_config_path),
         session_prompt=session_prompt,
-        setup_steps=setup_steps,
         error=None if up_exit == 0 else "Failed to start devcontainer for session worktree.",
     )
 
 
-def execute_codex(request: CodexExecRequest) -> CodexExecResult:
-    command_parts = build_codex_command(request)
-    command = shell_join(command_parts)
-    start_time = now_utc_iso()
+def end_session(request: EndSessionRequest) -> EndSessionResult:
+    base_result = EndSessionResult()
 
-    stdout_capture = Capture()
-    stderr_capture = Capture()
-    process = run(command, stdout=stdout_capture, stderr=stderr_capture)
+    context, context_error = resolve_session_context(request.session_name, request.workspace_folder)
+    if not context:
+        return replace(base_result, error=context_error)
 
-    end_time = now_utc_iso()
-    exit_code = int(process.returncode) if process.returncode is not None else 1
-
-    stdout_lines = stdout_capture.text.splitlines() if stdout_capture.text else []
-    stderr_lines = stderr_capture.text.splitlines() if stderr_capture.text else []
-    events, non_json_stdout = parse_json_lines(stdout_lines)
-
-    summary_data = summarize_events(
-        command=command,
-        exit_code=exit_code,
-        start_time=start_time,
-        end_time=end_time,
-        events=events,
-        non_json_stdout=non_json_stdout,
-        stderr_lines=stderr_lines,
+    recorder = CommandStepRecorder()
+    base_result = replace(
+        base_result,
+        session_id=context.session_id,
+        branch_name=context.branch_name,
+        worktree_path=str(context.worktree_path),
+        teardown_steps=recorder.steps,
     )
 
-    resolved_json_log_path = resolve_path(request.workspace_folder, request.json_log_path)
-    write_jsonl(resolved_json_log_path, events)
+    def fail(error: str) -> EndSessionResult:
+        return replace(base_result, error=error)
 
-    turn_status = str(summary_data.get("turn_status", "unknown"))
-    thread_id = summary_data.get("thread_id")
-    ok = exit_code == 0 and turn_status == "completed"
-    return CodexExecResult(
-        ok=ok,
-        exit_code=exit_code,
-        turn_status=turn_status,
-        thread_id=thread_id if isinstance(thread_id, str) else None,
-        json_log_path=str(resolved_json_log_path),
-        summary_data=summary_data,
+    list_containers_cmd = [
+        "docker",
+        "ps",
+        "-aq",
+        "--filter",
+        f"label=devcontainer.local_folder={context.worktree_path}",
+    ]
+    list_containers_exit, list_containers_stdout, _ = recorder.run(
+        "list_devcontainer_containers", list_containers_cmd
+    )
+    if list_containers_exit != 0:
+        return fail("Failed to list devcontainer containers for session.")
+
+    container_ids = [line.strip() for line in list_containers_stdout.splitlines() if line.strip()]
+    if container_ids:
+        remove_containers_cmd = ["docker", "rm", "-f", *container_ids]
+        remove_containers_exit, _, _ = recorder.run(
+            "remove_devcontainer_containers", remove_containers_cmd
+        )
+        if remove_containers_exit != 0:
+            return fail("Failed to remove devcontainer containers for session.")
+
+    list_worktrees_cmd = ["git", "-C", str(context.git_root_path), "worktree", "list", "--porcelain"]
+    list_worktrees_exit, list_worktrees_stdout, _ = recorder.run("list_git_worktrees", list_worktrees_cmd)
+    if list_worktrees_exit != 0:
+        return fail("Failed to list git worktrees.")
+
+    is_registered_worktree = any(
+        candidate == context.worktree_path
+        for candidate, _ in parse_worktree_porcelain(list_worktrees_stdout)
+    )
+    if is_registered_worktree:
+        remove_worktree_cmd = [
+            "git",
+            "-C",
+            str(context.git_root_path),
+            "worktree",
+            "remove",
+            "--force",
+            str(context.worktree_path),
+        ]
+        remove_worktree_exit, _, _ = recorder.run("remove_git_worktree", remove_worktree_cmd)
+        if remove_worktree_exit != 0:
+            return fail("Failed to remove git worktree.")
+
+    if context.worktree_path.exists():
+        remove_directory_cmd = ["rm", "-rf", str(context.worktree_path)]
+        remove_directory_exit, _, _ = recorder.run("remove_worktree_directory", remove_directory_cmd)
+        if remove_directory_exit != 0:
+            return fail("Failed to remove worktree directory.")
+
+    return replace(
+        base_result,
+        ok=True,
+        error=None,
     )

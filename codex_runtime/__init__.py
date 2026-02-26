@@ -1,19 +1,25 @@
 """Codex execution helpers and entrypoint support."""
 
 from codex_runtime.core import (
-    CodexExecRequest,
-    CodexExecResult,
     CreateSessionRequest,
     CreateSessionResult,
+    EndSessionRequest,
+    EndSessionResult,
+    ListSessionsRequest,
+    ListSessionsResult,
     create_session,
-    execute_codex,
+    end_session,
+    list_sessions,
 )
 
 __all__ = [
-    "CodexExecRequest",
-    "CodexExecResult",
     "CreateSessionRequest",
     "CreateSessionResult",
+    "EndSessionRequest",
+    "EndSessionResult",
+    "ListSessionsRequest",
+    "ListSessionsResult",
     "create_session",
-    "execute_codex",
+    "end_session",
+    "list_sessions",
 ]

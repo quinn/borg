@@ -17,9 +17,6 @@ devcontainer-codex-version:
 devcontainer-codex-ping prompt="ping":
   bunx @devcontainers/cli@latest exec --workspace-folder {{workspace_folder}} --config {{devcontainer_config}} codex exec --skip-git-repo-check "{{prompt}}"
 
-codex-run prompt="ping":
-  uv run -m scripts.codex_cli --print-summary "{{prompt}}"
-
 codex-mcp:
   uv run -m scripts.codex_mcp
 

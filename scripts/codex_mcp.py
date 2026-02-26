@@ -6,31 +6,16 @@ from typing import Any
 from mcp.server.fastmcp import FastMCP
 
 from codex_runtime.core import (
-    CodexExecRequest,
     CreateSessionRequest,
+    EndSessionRequest,
+    ListSessionsRequest,
     create_session,
-    execute_codex,
+    end_session,
+    list_sessions,
 )
 
 
 mcp = FastMCP("codex-runtime")
-
-
-@mcp.tool()
-def codex_exec(
-    prompt: str = "ping",
-    workspace_folder: str = ".",
-    devcontainer_config: str = ".devcontainer/devcontainer.json",
-    json_log_path: str = "logs/codex-run-events.jsonl",
-) -> dict[str, Any]:
-    """Run codex in a devcontainer and return status + parsed summary data."""
-    request = CodexExecRequest(
-        prompt=prompt,
-        workspace_folder=workspace_folder,
-        devcontainer_config=devcontainer_config,
-        json_log_path=json_log_path,
-    )
-    return execute_codex(request).to_dict()
 
 
 @mcp.tool()
@@ -39,7 +24,6 @@ def create_codex_session(
     task_description: str,
     workspace_folder: str = ".",
     base_ref: str = "HEAD",
-    sessions_root_path: str | None = None,
 ) -> dict[str, Any]:
     """Create isolated worktree + devcontainer and return a scoped sub-agent prompt."""
     request = CreateSessionRequest(
@@ -47,9 +31,30 @@ def create_codex_session(
         task_description=task_description,
         workspace_folder=workspace_folder,
         base_ref=base_ref,
-        sessions_root_path=sessions_root_path,
     )
     return create_session(request).to_dict()
+
+
+@mcp.tool()
+def end_codex_session(
+    session_name: str,
+    workspace_folder: str = ".",
+) -> dict[str, Any]:
+    """Tear down a session devcontainer and remove its worktree directory."""
+    request = EndSessionRequest(
+        session_name=session_name,
+        workspace_folder=workspace_folder,
+    )
+    return end_session(request).to_dict()
+
+
+@mcp.tool()
+def list_codex_sessions(
+    workspace_folder: str = ".",
+) -> dict[str, Any]:
+    """List active session worktrees under the repository sessions root."""
+    request = ListSessionsRequest(workspace_folder=workspace_folder)
+    return list_sessions(request).to_dict()
 
 
 def main() -> None:

@@ -16,18 +16,15 @@ You own this code base. You do not need to maintain interfaces, build adapters, 
 - `just devcontainer-up`
 - `just devcontainer-codex-version`
 - `just devcontainer-codex-ping`
-- `just codex-run`
 - `just codex-mcp`
 
 ## Runtime flow
-- CLI entrypoint: `scripts/codex_cli.py` (arg parsing in script, business logic in `codex_runtime/core.py`).
 - MCP entrypoint: `scripts/codex_mcp.py` (tool definitions in script, business logic in `codex_runtime/core.py`).
 - Codex runs inside the devcontainer with `--dangerously-bypass-approvals-and-sandbox` (full unrestricted mode).
 - MCP tools:
   - `create_codex_session`: creates a worktree, starts a devcontainer, and returns a scoped sub-agent prompt.
-  - `codex_exec`: runs Codex in the session workspace and returns parsed summary data directly.
-- Raw events: `logs/codex-run-events.jsonl`.
-- Resume ID is `thread_id` in returned `summary_data`.
+  - `end_codex_session`: tears down a session devcontainer and removes its worktree directory.
+  - `list_codex_sessions`: lists active session worktrees under the repository sessions root.
 
 ## Working conventions
 - Keep changes minimal and declarative.
