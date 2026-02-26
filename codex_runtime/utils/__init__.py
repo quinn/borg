@@ -3,7 +3,6 @@ from codex_runtime.utils.helpers import (
     parse_json_lines,
     resolve_path,
     run_command_capture,
-    shell_join,
     slugify,
     write_jsonl,
 )
@@ -13,8 +12,6 @@ __all__ = [
     "parse_json_lines",
     "resolve_path",
     "run_command_capture",
-    "shell_join",
     "slugify",
     "write_jsonl",
 ]
-

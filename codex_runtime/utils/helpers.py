@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import re
-import shlex
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -14,19 +13,15 @@ def now_utc_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def shell_join(parts: list[str]) -> str:
-    return " ".join(shlex.quote(part) for part in parts)
-
-
 def slugify(value: str) -> str:
     cleaned = re.sub(r"[^a-zA-Z0-9]+", "-", value.strip().lower()).strip("-")
     return cleaned or "session"
 
 
-def run_command_capture(command_parts: list[str]) -> tuple[int, str, str]:
+def run_command_capture(command: str) -> tuple[int, str, str]:
     stdout_capture = Capture()
     stderr_capture = Capture()
-    process = run(shell_join(command_parts), stdout=stdout_capture, stderr=stderr_capture)
+    process = run(command, stdout=stdout_capture, stderr=stderr_capture)
     exit_code = int(process.returncode) if process.returncode is not None else 1
     stdout_text = stdout_capture.text or ""
     stderr_text = stderr_capture.text or ""
@@ -65,4 +60,3 @@ def write_jsonl(path: Path, events: list[dict[str, Any]]) -> None:
         for event in events:
             handle.write(json.dumps(event, separators=(",", ":")))
             handle.write("\n")
-

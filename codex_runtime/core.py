@@ -4,7 +4,8 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
-from codex_runtime.utils import run_command_capture, shell_join, slugify
+from sarge import shell_format
+from codex_runtime.utils import run_command_capture, slugify
 
 
 @dataclass(frozen=True)
@@ -102,12 +103,13 @@ class CommandStepRecorder:
     def __init__(self) -> None:
         self.steps: list[dict[str, Any]] = []
 
-    def run(self, name: str, command_parts: list[str]) -> tuple[int, str, str]:
-        exit_code, stdout_text, stderr_text = run_command_capture(command_parts)
+    def run(self, name: str, command_format: str, *args: Any) -> tuple[int, str, str]:
+        command = shell_format(command_format, *args)
+        exit_code, stdout_text, stderr_text = run_command_capture(command)
         self.steps.append(
             {
                 "name": name,
-                "command": shell_join(command_parts),
+                "command": command,
                 "exit_code": exit_code,
                 "stdout_lines": stdout_text.splitlines(),
                 "stderr_lines": stderr_text.splitlines(),
@@ -116,17 +118,26 @@ class CommandStepRecorder:
         return exit_code, stdout_text, stderr_text
 
 
-def resolve_git_root(workspace_folder: str) -> tuple[str | None, str | None]:
-    command = ["git", "-C", str(Path(workspace_folder).resolve()), "rev-parse", "--show-toplevel"]
-    exit_code, stdout_text, stderr_text = run_command_capture(command)
+def resolve_git_root(
+    workspace_folder: str,
+    recorder: CommandStepRecorder,
+) -> tuple[str | None, str | None]:
+    exit_code, stdout_text, stderr_text = recorder.run(
+        "resolve_git_root",
+        "git -C {0} rev-parse --show-toplevel",
+        Path(workspace_folder).resolve(),
+    )
     if exit_code != 0:
         return None, stderr_text.strip() or "Failed to resolve git root."
     git_root = stdout_text.strip()
     return git_root, None
 
 
-def resolve_session_roots(workspace_folder: str) -> tuple[tuple[Path, Path] | None, str | None]:
-    git_root, git_root_error = resolve_git_root(workspace_folder)
+def resolve_session_roots(
+    workspace_folder: str,
+    recorder: CommandStepRecorder,
+) -> tuple[tuple[Path, Path] | None, str | None]:
+    git_root, git_root_error = resolve_git_root(workspace_folder, recorder)
     if not git_root:
         return None, git_root_error
 
@@ -161,8 +172,12 @@ def parse_worktree_porcelain(stdout_text: str) -> list[tuple[Path, str | None]]:
     return entries
 
 
-def resolve_session_context(session_name: str, workspace_folder: str) -> tuple[SessionContext | None, str | None]:
-    roots, roots_error = resolve_session_roots(workspace_folder)
+def resolve_session_context(
+    session_name: str,
+    workspace_folder: str,
+    recorder: CommandStepRecorder,
+) -> tuple[SessionContext | None, str | None]:
+    roots, roots_error = resolve_session_roots(workspace_folder, recorder)
     if not roots:
         return None, roots_error
 
@@ -185,21 +200,26 @@ def resolve_session_context(session_name: str, workspace_folder: str) -> tuple[S
 
 
 def list_sessions(request: ListSessionsRequest) -> ListSessionsResult:
-    base_result = ListSessionsResult()
+    recorder = CommandStepRecorder()
+    base_result = replace(
+        ListSessionsResult(),
+        list_steps=recorder.steps,
+    )
 
-    roots, roots_error = resolve_session_roots(request.workspace_folder)
+    roots, roots_error = resolve_session_roots(request.workspace_folder, recorder)
     if not roots:
         return replace(base_result, error=roots_error)
 
     git_root_path, sessions_root_path = roots
-    recorder = CommandStepRecorder()
     base_result = replace(
         base_result,
         sessions_root_path=str(sessions_root_path),
-        list_steps=recorder.steps,
     )
-    list_worktrees_cmd = ["git", "-C", str(git_root_path), "worktree", "list", "--porcelain"]
-    list_worktrees_exit, list_worktrees_stdout, _ = recorder.run("list_git_worktrees", list_worktrees_cmd)
+    list_worktrees_exit, list_worktrees_stdout, _ = recorder.run(
+        "list_git_worktrees",
+        "git -C {0} worktree list --porcelain",
+        git_root_path,
+    )
     if list_worktrees_exit != 0:
         return replace(base_result, error="Failed to list git worktrees.")
 
@@ -252,54 +272,50 @@ def build_session_prompt(task_description: str, session_id: str, worktree_path: 
 
 
 def create_session(request: CreateSessionRequest) -> CreateSessionResult:
-    base_result = CreateSessionResult()
+    recorder = CommandStepRecorder()
+    base_result = replace(
+        CreateSessionResult(),
+        setup_steps=recorder.steps,
+    )
 
-    context, context_error = resolve_session_context(request.session_name, request.workspace_folder)
+    context, context_error = resolve_session_context(
+        request.session_name, request.workspace_folder, recorder
+    )
     if not context:
         return replace(base_result, error=context_error)
 
     context.sessions_root_path.mkdir(parents=True, exist_ok=True)
-    recorder = CommandStepRecorder()
     base_result = replace(
         base_result,
         session_id=context.session_id,
         branch_name=context.branch_name,
         worktree_path=str(context.worktree_path),
         devcontainer_config_path=str(context.devcontainer_config_path),
-        setup_steps=recorder.steps,
     )
 
     def fail(error: str) -> CreateSessionResult:
         return replace(base_result, error=error)
 
-    worktree_cmd = [
-        "git",
-        "-C",
-        str(context.git_root_path),
-        "worktree",
-        "add",
-        "-b",
+    worktree_exit, _, _ = recorder.run(
+        "create_worktree",
+        "git -C {0} worktree add -b {1} {2} {3}",
+        context.git_root_path,
         context.branch_name,
-        str(context.worktree_path),
+        context.worktree_path,
         request.base_ref,
-    ]
-    worktree_exit, _, _ = recorder.run("create_worktree", worktree_cmd)
+    )
     if worktree_exit != 0:
         return fail("Failed to create git worktree.")
 
     if not context.devcontainer_config_path.exists():
         return fail(f"Missing devcontainer config at {context.devcontainer_config_path}.")
 
-    up_cmd = [
-        "bunx",
-        "@devcontainers/cli@latest",
-        "up",
-        "--workspace-folder",
-        str(context.worktree_path),
-        "--config",
-        str(context.devcontainer_config_path),
-    ]
-    up_exit, _, _ = recorder.run("devcontainer_up", up_cmd)
+    up_exit, _, _ = recorder.run(
+        "devcontainer_up",
+        "bunx @devcontainers/cli@latest up --workspace-folder {0} --config {1}",
+        context.worktree_path,
+        context.devcontainer_config_path,
+    )
 
     session_prompt = build_session_prompt(
         task_description=request.task_description,
@@ -315,48 +331,52 @@ def create_session(request: CreateSessionRequest) -> CreateSessionResult:
 
 
 def end_session(request: EndSessionRequest) -> EndSessionResult:
-    base_result = EndSessionResult()
+    recorder = CommandStepRecorder()
+    base_result = replace(
+        EndSessionResult(),
+        teardown_steps=recorder.steps,
+    )
 
-    context, context_error = resolve_session_context(request.session_name, request.workspace_folder)
+    context, context_error = resolve_session_context(
+        request.session_name, request.workspace_folder, recorder
+    )
     if not context:
         return replace(base_result, error=context_error)
 
-    recorder = CommandStepRecorder()
     base_result = replace(
         base_result,
         session_id=context.session_id,
         branch_name=context.branch_name,
         worktree_path=str(context.worktree_path),
-        teardown_steps=recorder.steps,
     )
 
     def fail(error: str) -> EndSessionResult:
         return replace(base_result, error=error)
 
-    list_containers_cmd = [
-        "docker",
-        "ps",
-        "-aq",
-        "--filter",
-        f"label=devcontainer.local_folder={context.worktree_path}",
-    ]
     list_containers_exit, list_containers_stdout, _ = recorder.run(
-        "list_devcontainer_containers", list_containers_cmd
+        "list_devcontainer_containers",
+        "docker ps -aq --filter {0}",
+        f"label=devcontainer.local_folder={context.worktree_path}",
     )
     if list_containers_exit != 0:
         return fail("Failed to list devcontainer containers for session.")
 
     container_ids = [line.strip() for line in list_containers_stdout.splitlines() if line.strip()]
     if container_ids:
-        remove_containers_cmd = ["docker", "rm", "-f", *container_ids]
+        ids_placeholders = " ".join("{"+str(index)+"}" for index in range(len(container_ids)))
         remove_containers_exit, _, _ = recorder.run(
-            "remove_devcontainer_containers", remove_containers_cmd
+            "remove_devcontainer_containers",
+            f"docker rm -f {ids_placeholders}",
+            *container_ids,
         )
         if remove_containers_exit != 0:
             return fail("Failed to remove devcontainer containers for session.")
 
-    list_worktrees_cmd = ["git", "-C", str(context.git_root_path), "worktree", "list", "--porcelain"]
-    list_worktrees_exit, list_worktrees_stdout, _ = recorder.run("list_git_worktrees", list_worktrees_cmd)
+    list_worktrees_exit, list_worktrees_stdout, _ = recorder.run(
+        "list_git_worktrees",
+        "git -C {0} worktree list --porcelain",
+        context.git_root_path,
+    )
     if list_worktrees_exit != 0:
         return fail("Failed to list git worktrees.")
 
@@ -365,22 +385,21 @@ def end_session(request: EndSessionRequest) -> EndSessionResult:
         for candidate, _ in parse_worktree_porcelain(list_worktrees_stdout)
     )
     if is_registered_worktree:
-        remove_worktree_cmd = [
-            "git",
-            "-C",
-            str(context.git_root_path),
-            "worktree",
-            "remove",
-            "--force",
-            str(context.worktree_path),
-        ]
-        remove_worktree_exit, _, _ = recorder.run("remove_git_worktree", remove_worktree_cmd)
+        remove_worktree_exit, _, _ = recorder.run(
+            "remove_git_worktree",
+            "git -C {0} worktree remove --force {1}",
+            context.git_root_path,
+            context.worktree_path,
+        )
         if remove_worktree_exit != 0:
             return fail("Failed to remove git worktree.")
 
     if context.worktree_path.exists():
-        remove_directory_cmd = ["rm", "-rf", str(context.worktree_path)]
-        remove_directory_exit, _, _ = recorder.run("remove_worktree_directory", remove_directory_cmd)
+        remove_directory_exit, _, _ = recorder.run(
+            "remove_worktree_directory",
+            "rm -rf {0}",
+            context.worktree_path,
+        )
         if remove_directory_exit != 0:
             return fail("Failed to remove worktree directory.")
 
