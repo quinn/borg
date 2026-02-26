@@ -1,7 +1,5 @@
-set shell := ["bash", "-cu"]
+mod irc 
 
-compose_file := "irc.compose.yaml"
-project_name := "openclaw-irc"
 devcontainer_config := ".devcontainer/devcontainer.json"
 workspace_folder := "."
 
@@ -19,18 +17,3 @@ devcontainer-codex-ping prompt="ping":
 
 codex-mcp:
   uv run -m scripts.codex_mcp
-
-irc-up:
-  docker compose -f {{compose_file}} -p {{project_name}} up -d
-
-irc-down:
-  docker compose -f {{compose_file}} -p {{project_name}} down
-
-irc-ps:
-  docker compose -f {{compose_file}} -p {{project_name}} ps
-
-irc-logs:
-  docker compose -f {{compose_file}} -p {{project_name}} logs -f --tail=200 ngircd
-
-irc-restart:
-  docker compose -f {{compose_file}} -p {{project_name}} restart ngircd

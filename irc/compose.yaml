@@ -8,4 +8,4 @@ services:
     ports:
       - "6667:6667"
     volumes:
-      - ./irc/ngircd.conf:/config/ngircd.conf:ro
+      - ./ngircd.conf:/config/ngircd.conf:ro
