@@ -8,23 +8,28 @@ You own this code base. You do not need to maintain interfaces, build adapters, 
 - Applies to the repository root unless a deeper `AGENTS.md` overrides it.
 
 ## Project intent
-- Primary goal: run Codex agents inside a dev container with host auth state mounted.
+- Primary goal: run Codex and Claude Code agents inside a dev container with host auth state mounted.
 - Dev container config lives in `.devcontainer/`.
+- Packages are declared in `.devcontainer/flake.nix` (Nix flake with `buildEnv`).
 - `~/.codex` is mounted into the container at `/home/vscode/.codex`.
+- `~/.claude` and `~/.claude.json` are mounted into the container at `/home/vscode/.claude` and `/home/vscode/.claude.json`.
 
 ## Main commands
 - `just devcontainer-up`
 - `just devcontainer-codex-version`
 - `just devcontainer-codex-ping`
-- `just codex-mcp`
+- `just devcontainer-claude-version`
+- `just devcontainer-claude-ping`
+- `just mcp`
 
 ## Runtime flow
-- MCP entrypoint: `scripts/codex_mcp.py` (tool definitions in script, business logic in `codex_runtime/core.py`).
+- MCP entrypoint: `scripts/mcp_server.py` (tool definitions in script, business logic in `borg_runtime/core.py`).
 - Codex runs inside the devcontainer with `--dangerously-bypass-approvals-and-sandbox` (full unrestricted mode).
-- MCP tools:
-  - `create_codex_session`: creates a worktree, starts a devcontainer, and returns a scoped sub-agent prompt.
-  - `end_codex_session`: tears down a session devcontainer and removes its worktree directory.
-  - `list_codex_sessions`: lists active session worktrees under the repository sessions root.
+- Claude Code runs inside the devcontainer with `--dangerously-skip-permissions` (full unrestricted mode).
+- MCP tools (each accepts an `agent` parameter — `"claude"` or `"codex"`):
+  - `create_session_tool`: creates a worktree, starts a devcontainer, and returns a scoped sub-agent prompt.
+  - `end_session_tool`: tears down a session devcontainer and removes its worktree directory.
+  - `list_sessions_tool`: lists active session worktrees under the repository sessions root.
 
 ## Working conventions
 - Keep changes minimal and declarative.

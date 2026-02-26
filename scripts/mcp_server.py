@@ -5,7 +5,7 @@ from typing import Any
 
 from mcp.server.fastmcp import FastMCP
 
-from codex_runtime.core import (
+from borg_runtime.commands import (
     CreateSessionRequest,
     EndSessionRequest,
     ListSessionsRequest,
@@ -15,28 +15,39 @@ from codex_runtime.core import (
 )
 
 
-mcp = FastMCP("codex-runtime")
+mcp = FastMCP("borg")
 
 
 @mcp.tool()
-def create_codex_session(
+def create_session_tool(
     session_name: str,
     task_description: str,
+    agent: str = "claude",
     workspace_folder: str = ".",
     base_ref: str = "HEAD",
 ) -> dict[str, Any]:
-    """Create isolated worktree + devcontainer and return a scoped sub-agent prompt."""
+    """Create isolated worktree + devcontainer and return a scoped sub-agent prompt.
+
+    Args:
+        session_name: Human-readable name for the session.
+        task_description: What the sub-agent should work on.
+        agent: Which CLI agent to use inside the container ("codex" or "claude").
+        workspace_folder: Path to the git repository.
+        base_ref: Git ref to base the worktree branch on.
+    """
     request = CreateSessionRequest(
         session_name=session_name,
         task_description=task_description,
         workspace_folder=workspace_folder,
         base_ref=base_ref,
     )
-    return create_session(request).to_dict()
+    result = create_session(request).to_dict()
+    result["agent"] = agent
+    return result
 
 
 @mcp.tool()
-def end_codex_session(
+def end_session_tool(
     session_name: str,
     workspace_folder: str = ".",
 ) -> dict[str, Any]:
@@ -49,7 +60,7 @@ def end_codex_session(
 
 
 @mcp.tool()
-def list_codex_sessions(
+def list_sessions_tool(
     workspace_folder: str = ".",
 ) -> dict[str, Any]:
     """List active session worktrees under the repository sessions root."""

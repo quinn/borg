@@ -15,5 +15,11 @@ devcontainer-codex-version:
 devcontainer-codex-ping prompt="ping":
   bunx @devcontainers/cli@latest exec --workspace-folder {{workspace_folder}} --config {{devcontainer_config}} codex exec --skip-git-repo-check "{{prompt}}"
 
-codex-mcp:
-  uv run -m scripts.codex_mcp
+devcontainer-claude-version:
+  bunx @devcontainers/cli@latest exec --workspace-folder {{workspace_folder}} --config {{devcontainer_config}} claude --version
+
+devcontainer-claude-ping prompt="ping":
+  bunx @devcontainers/cli@latest exec --workspace-folder {{workspace_folder}} --config {{devcontainer_config}} claude -p "{{prompt}}"
+
+mcp:
+  uv run -m scripts.mcp_server

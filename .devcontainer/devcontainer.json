@@ -1,15 +1,19 @@
 {
-  "name": "borg-codex",
+  "name": "borg",
   "build": {
     "dockerfile": "Dockerfile",
     "context": ".."
   },
   "remoteUser": "vscode",
+  "initializeCommand": "mkdir -p ${HOME}/.codex ${HOME}/.claude && touch ${HOME}/.claude.json && security find-generic-password -s 'Claude Code-credentials' -w > ${HOME}/.claude/.credentials.json 2>/dev/null || true",
   "mounts": [
-    "source=${localEnv:HOME}/.codex,target=/home/vscode/.codex,type=bind"
+    "source=${localEnv:HOME}/.codex,target=/home/vscode/.codex,type=bind",
+    "source=${localEnv:HOME}/.claude,target=/home/vscode/.claude,type=bind",
+    "source=${localEnv:HOME}/.claude.json,target=/home/vscode/.claude.json,type=bind"
   ],
   "containerEnv": {
-    "CODEX_HOME": "/home/vscode/.codex"
+    "CODEX_HOME": "/home/vscode/.codex",
+    "CLAUDE_CONFIG_DIR": "/home/vscode/.claude"
   },
-  "postCreateCommand": "codex --version"
+  "postCreateCommand": "codex --version && claude --version"
 }

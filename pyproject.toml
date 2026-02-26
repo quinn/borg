@@ -1,7 +1,7 @@
 [project]
 name = "borg-tools"
 version = "0.1.0"
-description = "Codex session runtime tooling with MCP entrypoints."
+description = "Borg session runtime tooling with MCP entrypoints."
 requires-python = ">=3.11"
 dependencies = [
   "mcp>=1.20.0",
@@ -10,3 +10,7 @@ dependencies = [
 
 [tool.uv]
 package = false
+
+[tool.basedpyright]
+venvPath = "."
+venv = ".venv"

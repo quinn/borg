@@ -1,2 +1,2 @@
-"""Python entrypoints for codex runtime tooling."""
+"""Python entrypoints for borg runtime tooling."""
 
